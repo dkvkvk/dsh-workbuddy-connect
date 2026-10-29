@@ -41,6 +41,8 @@ node scripts\install-into-profile.mjs
 
 > 回滚：把 `dependencies["dsh-workbuddy-connect"]` 改回 `"0.7.9"` 再 `pnpm install`（回到 npm 上游版），或删掉这一行 + 从 bundles 移除。
 
+> profile 里的依赖写的是 `file:` 到仓库的 `dist/*.tgz`，所以 **`dist/` 里的 tgz 会随仓库一起提交**（约 160 KiB）。这样 profile 的 spec 永远可解析；改代码后跑一次安装脚本重新打包即可。**删掉 `dist/` 会让后续 `pnpm install` 报「tarball 不存在」**。
+
 ## 验证
 
 **静态体检**（在 profile 目录跑，验证本包能否被宿主同版本的 `@deepseek-ai` 树 import）：
