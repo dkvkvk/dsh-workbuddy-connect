@@ -16,31 +16,30 @@
 | `version` → `0.7.9-r3.1`、`private: true` | `package.json` | 与上游版本区分；`private` 防止误发到 npm（`dsh-workbuddy-connect` 这个名字属于上游） |
 | `repository` / `homepage` → 本仓库 | `package.json` | 自维护 |
 | 新增自维护 README / CHANGELOG / 验证与安装脚本 | 仓库根、`scripts/` | 记录差异、快速体检、可重复安装 |
+| 删掉上游的 `scripts`（`prepack: npm run build` / `build: tsdown` 等）与 `devDependencies` 构建链 | `package.json` | 本仓库直接维护构建产物，没有 `src`，`pnpm pack` 时 `prepack` 会因缺 `tsdown` 而失败 |
 
 `lib/` **一行未改**，与 npm 上的 0.7.9 构建产物逐字节一致；将来的行为改动也会先记进 [`CHANGELOG.md`](./CHANGELOG.md)。
 
 ## 安装到 desktop profile
 
-DSH 桌面端的 `desktop` profile 由 App 独占，CLI 的 `dsh plugin --profile desktop add` 会被拒，所以手动改三处再用宿主自带 pnpm 装：
-
-1. `~/.dsh/profiles/desktop/package.json`
-   - `dependencies["dsh-workbuddy-connect"] = "link:C:\\Users\\20646\\Desktop\\杂\\dsh-workbuddy-connect"`
-   - `dsh.profile.bundles` 里必须有 **包名** `dsh-workbuddy-connect`（不是 `cordis.patch.yml` 里的 `insert.id` `llm-workbuddy`）
-2. 在 profile 目录跑宿主自带 pnpm（路径按顺序探测）：
-   ```bat
-   node "D:\DeepSeek Harness\resources\runtime\primary-runtime\dependencies\pnpm\bin\pnpm.cjs" install
-   ```
-3. **完全退出 DSH 再打开** —— 宿主按模块路径缓存插件，热重载换不掉 host 半边。
-
-也可以直接跑：
+DSH 桌面端的 `desktop` profile 由 App 独占，CLI 的 `dsh plugin --profile desktop add` 会被拒，所以走「打包成 tarball → 用宿主自带 pnpm 装」：
 
 ```bat
 node scripts\install-into-profile.mjs
 ```
 
-（脚本会先备份 `package.json` / `pnpm-lock.yaml`，再改依赖 + 补 bundles + 调 pnpm。）
+脚本做的事：`pnpm pack` 出 `dist/dsh-workbuddy-connect-<version>.tgz` → 备份 `package.json` / `pnpm-lock.yaml` → 把 `dependencies["dsh-workbuddy-connect"]` 写成 `file:<tgz 绝对路径>` 并补进 `dsh.profile.bundles`（写**包名**，不是 `insert.id` `llm-workbuddy`）→ 在 profile 目录跑 pnpm install → 跑静态体检。
 
-> 换成 `link:` 之前如果装的是 npm 上的 0.7.9，直接覆盖即可；想回滚就把 `dependencies` 改回 `"0.7.9"` 再 `pnpm install`。
+手动版等价步骤：
+
+1. `pnpm pack --pack-destination dist`（在仓库根）
+2. `~/.dsh/profiles/desktop/package.json`：`dependencies["dsh-workbuddy-connect"] = "file:C:/.../dist/dsh-workbuddy-connect-0.7.9-r3.1.tgz"`，`dsh.profile.bundles` 里包含 `dsh-workbuddy-connect`
+3. `node "D:\DeepSeek Harness\resources\runtime\primary-runtime\dependencies\pnpm\bin\pnpm.cjs" install`（在 profile 目录）
+4. **完全退出 DSH 再打开** —— 宿主按模块路径缓存插件，热重载换不掉 host 半边。
+
+> **不要用 `link:`（2026-10-29 实测踩坑）**：`link:` 只把 `node_modules/<pkg>` 指到仓库，Node 解析这个包里的裸导入（`@deepseek-ai/dsh-llm` 等）时从**真实路径**向上找，仓库不在 profile 的 node_modules 树里 → 解析不到宿主 peer → 宿主静默跳过该 bundle，`/plugins/dsh-workbuddy-connect/status` 直接 **404**，日志里也不报错（`--dump-config` 照样显示插件在组合树里）。tarball 安装会把文件真正解到 `node_modules/.pnpm`/`node_modules` 下，上溯能命中 profile 与上一级的 `@deepseek-ai` 树。
+
+> 回滚：把 `dependencies["dsh-workbuddy-connect"]` 改回 `"0.7.9"` 再 `pnpm install`（回到 npm 上游版），或删掉这一行 + 从 bundles 移除。
 
 ## 验证
 
