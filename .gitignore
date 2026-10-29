@@ -1,0 +1,7 @@
+node_modules/
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+# 本地备份（改 profile 前留的）
+*.bak-*
